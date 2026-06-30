@@ -1,5 +1,7 @@
 #!/bin/bash
 
+sudo apt update && sudo apt upgrade -y
+
 for dir in */; do
     # Remove trailing slash for cleaner output
     dir_name="${dir%/}"
