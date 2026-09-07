@@ -17,7 +17,7 @@
 # ============================================
 
 $vmHost   = "172.21.234.XXX"    # IP or hostname of the new VM
-$sshUser  = "youruser"          # SSH username on the VM
+$sshUser  = "sidsuresh"          # SSH username on the VM
 $installGuestAgent = $true      # set to $false to skip qemu-guest-agent install
 
 $pubKeyPath = "$env:USERPROFILE\.ssh\id_ed25519.pub"
@@ -106,23 +106,35 @@ ssh -t "$sshUser@$vmHost" $sudoersCmd
 #    scheduled for 4:00 AM local time on the VM.
 # ============================================
 Write-Host "`n[7/9] Setting up unattended-upgrades (with 4am auto-reboot)..." -ForegroundColor Yellow
-$unattendedCmd = @"
+$unattendedCmd = @'
 sudo apt install -y unattended-upgrades apt-listchanges
-sudo bash -c 'cat > /etc/apt/apt.conf.d/20auto-upgrades' <<'EOF'
-APT::Periodic::Update-Package-Lists "1";
-APT::Periodic::Unattended-Upgrade "1";
-APT::Periodic::AutocleanInterval "7";
-EOF
-sudo bash -c 'cat > /etc/apt/apt.conf.d/52auto-reboot' <<'EOF'
-Unattended-Upgrade::Automatic-Reboot "true";
-Unattended-Upgrade::Automatic-Reboot-Time "04:00";
-EOF
+
+set_apt_conf() {
+    file="$1"
+    key="$2"
+    value="$3"
+    sudo touch "$file"
+    if sudo grep -q "^${key} " "$file" 2>/dev/null; then
+        sudo sed -i "s|^${key} .*|${key} \"${value}\";|" "$file"
+    else
+        echo "${key} \"${value}\";" | sudo tee -a "$file" > /dev/null
+    fi
+}
+
+set_apt_conf /etc/apt/apt.conf.d/20auto-upgrades "APT::Periodic::Update-Package-Lists" "1"
+set_apt_conf /etc/apt/apt.conf.d/20auto-upgrades "APT::Periodic::Unattended-Upgrade" "1"
+set_apt_conf /etc/apt/apt.conf.d/20auto-upgrades "APT::Periodic::AutocleanInterval" "7"
+
+set_apt_conf /etc/apt/apt.conf.d/52auto-reboot "Unattended-Upgrade::Automatic-Reboot" "true"
+set_apt_conf /etc/apt/apt.conf.d/52auto-reboot "Unattended-Upgrade::Automatic-Reboot-Time" "04:00"
+
 sudo systemctl enable --now unattended-upgrades
 sudo systemctl is-enabled unattended-upgrades
-"@
+'@
 ssh -t "$sshUser@$vmHost" $unattendedCmd
 Write-Host "-> unattended-upgrades installed and enabled. Security updates only by default; auto-reboot set for 04:00 (only reboots if a patched package actually requires it)." -ForegroundColor Green
 Write-Host "-> Note: 04:00 is the VM's own local time/timezone, not necessarily yours - worth checking with: timedatectl" -ForegroundColor Gray
+Write-Host "-> Settings are edited in place in 20auto-upgrades and 52auto-reboot (only the relevant lines are touched or added - safe to re-run, won't clobber other content in those files)." -ForegroundColor Gray
 
 # ============================================
 # 8. Install qemu-guest-agent (optional)
